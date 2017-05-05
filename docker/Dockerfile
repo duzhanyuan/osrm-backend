@@ -1,15 +1,9 @@
 FROM alpine:3.5
 
-ARG DOCKER_TAG
-
-RUN mkdir /src
-COPY . /src
-
 RUN mkdir /opt
 WORKDIR /opt
+
 RUN NPROC=$(grep -c ^processor /proc/cpuinfo 2>/dev/null || 1) && \
-    case ${DOCKER_TAG} in *"-debug"*) BUILD_TYPE="Debug";; *) BUILD_TYPE="Release";; esac && \
-    \
     echo "@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
     apk update && \
     apk upgrade && \
@@ -23,15 +17,21 @@ RUN NPROC=$(grep -c ^processor /proc/cpuinfo 2>/dev/null || 1) && \
     cd build && \
     cmake -DCMAKE_BUILD_TYPE=Release .. && \
     make -j${NPROC} && \
-    make install && \
-    \
+    make install
+
+ARG DOCKER_TAG
+RUN mkdir /src
+COPY . /src
+WORKDIR /src
+
+RUN NPROC=$(grep -c ^processor /proc/cpuinfo 2>/dev/null || 1) && \
     echo "Building OSRM ${DOCKER_TAG}" && \
-    cd /src && \
     git show --format="%H" | head -n1 > /opt/OSRM_GITSHA && \
     echo "Building OSRM gitsha $(cat /opt/OSRM_GITSHA)" && \
     mkdir build && \
     cd build && \
-    cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DENABLE_LTO=On .. && \
+    case ${DOCKER_TAG} in *"-debug"*) BUILD_TYPE="Debug";; *) BUILD_TYPE="Release";; esac && \
+    case ${DOCKER_TAG} in *"-assertions"*) echo "Building with assertions" && cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DENABLE_ASSERTIONS=ON -DBUILD_TOOLS=1 -DENABLE_LTO=On ;; *) echo "Building for ${BUILD_TYPE}" && cmake .. -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DENABLE_LTO=On ;; esac && \
     make -j${NPROC} install && \
     cd ../profiles && \
     cp -r * /opt && \
